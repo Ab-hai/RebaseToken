@@ -31,7 +31,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     }
 
     function setInterestRate(uint256 _newInterestRate) external onlyOwner {
-        if (_newInterestRate > s_interestRate) {
+        if (_newInterestRate >= s_interestRate) {
             revert RebaseToken_InterestRateIncreaseNotAllowed(s_interestRate, _newInterestRate);
         }
         s_interestRate = _newInterestRate;
@@ -48,7 +48,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         _mint(_to, _amount);
     }
 
-    function burn(address _from, uint256 _amount) external onlyRole(MINT_AND_BURN_ROLE) {
+    function burn(address _from, uint256 _amount) public onlyRole(MINT_AND_BURN_ROLE) {
         _mintAccruedInterest(_from);
         _burn(_from, _amount);
     }
@@ -58,11 +58,13 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     }
 
     function transfer(address _recipient, uint256 _amount) public override returns (bool) {
-        _mintAccruedInterest(msg.sender);
-        _mintAccruedInterest(_recipient);
         if (_amount == type(uint256).max) {
             _amount = balanceOf(msg.sender);
         }
+
+        _mintAccruedInterest(msg.sender);
+        _mintAccruedInterest(_recipient);
+
         if (balanceOf(_recipient) == 0) {
             s_userInterestRates[_recipient] = s_userInterestRates[msg.sender];
         }
@@ -87,20 +89,21 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     }
 
     function _mintAccruedInterest(address _user) internal {
-        uint256 currentBalance = super.balanceOf(_user);
-        uint256 previousPrincipleBalance = balanceOf(_user);
+        uint256 previousPrincipleBalance = super.balanceOf(_user);
+        uint256 currentBalance = balanceOf(_user);
 
         uint256 balanceChange = currentBalance - previousPrincipleBalance;
-
+        if (balanceChange > 0) {
+            _mint(_user, balanceChange);
+        }
         s_userLastUpdatedTimeStamp[_user] = block.timestamp;
-        _mint(_user, balanceChange);
     }
 
     function getInterestRate() external view returns (uint256) {
         return s_interestRate;
     }
 
-    function getUserInterestRate() external view returns (uint256) {
-        return s_userInterestRates[msg.sender];
+    function getUserInterestRate(address _user) external view returns (uint256) {
+        return s_userInterestRates[_user];
     }
 }

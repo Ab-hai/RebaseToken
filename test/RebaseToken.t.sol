@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {RebaseToken} from "../src/RebaseToken.sol";
 import {Vault} from "../src/Vault.sol";
 import {IRebaseToken} from "../src/interfaces/IRebaseToken.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract RebaseTokenTest is Test {
     RebaseToken public rebaseToken;
@@ -34,8 +35,8 @@ contract RebaseTokenTest is Test {
 
         uint256 startBalance = rebaseToken.balanceOf(user);
         assertEq(startBalance, amount);
-        vm.warp(block.timestamp + 1 hours);
 
+        vm.warp(block.timestamp + 1 hours);
         uint256 middleBalance = rebaseToken.balanceOf(user);
         assertGt(middleBalance, startBalance);
 
@@ -60,26 +61,86 @@ contract RebaseTokenTest is Test {
         vm.stopPrank();
     }
 
-    // function testRedeemAfterTimePassed(uint256 depositAmount, uint256 time) public {
-    //     time = bound(time, 1000, type(uint96).max);
-    //     depositAmount = bound(depositAmount, 1e5, type(uint96).max);
+    function testRedeemAfterTimePassed(uint256 depositAmount, uint256 time) public {
+        time = bound(time, 1000, type(uint96).max);
+        depositAmount = bound(depositAmount, 1e5, type(uint96).max);
 
-    //     vm.deal(user, depositAmount);
-    //     vm.prank(user);
-    //     vault.deposit{value: depositAmount}();
+        vm.deal(user, depositAmount);
+        vm.prank(user);
+        vault.deposit{value: depositAmount}();
 
-    //     vm.warp(time);
-    //     uint256 balance = rebaseToken.balanceOf(user);
+        vm.warp(block.timestamp + time);
+        uint256 balance = rebaseToken.balanceOf(user);
 
-    //     vm.deal(owner, balance - depositAmount);
-    //     vm.prank(owner);
-    //     addRewardsToVault(balance - depositAmount);
+        vm.deal(owner, balance - depositAmount);
+        vm.prank(owner);
+        addRewardsToVault(balance - depositAmount);
 
-    //     vm.prank(user);
-    //     vault.redeem(balance);
+        vm.prank(user);
+        vault.redeem(type(uint256).max);
 
-    //     uint256 ethBalance = address(user).balance;
-    //     assertEq(balance, ethBalance);
-    //     assertGt(balance, depositAmount);
-    // }
+        uint256 ethBalance = address(user).balance;
+
+        assertEq(ethBalance, balance);
+        assertGt(ethBalance, depositAmount);
+    }
+
+    function testTransfer(uint256 amount, uint256 amountToSend) public {
+        amount = bound(amount, 1e5 + 1e3, type(uint96).max);
+        amountToSend = bound(amountToSend, 1e5, amount - 1e3);
+
+        vm.deal(user, amount);
+        vm.prank(user);
+        vault.deposit{value: amount}();
+
+        address user2 = makeAddr("user2");
+        uint256 userBalance = rebaseToken.balanceOf(user);
+        uint256 user2Balance = rebaseToken.balanceOf(user2);
+
+        assertEq(userBalance, amount);
+        assertEq(user2Balance, 0);
+
+        vm.prank(owner);
+        rebaseToken.setInterestRate(4e10);
+
+        vm.prank(user);
+        rebaseToken.transfer(user2, amountToSend);
+
+        uint256 userBalanceAfterTransfer = rebaseToken.balanceOf(user);
+        uint256 user2BalanceAfterTransfer = rebaseToken.balanceOf(user2);
+
+        assertEq(userBalanceAfterTransfer, userBalance - amountToSend);
+        assertEq(user2BalanceAfterTransfer, amountToSend);
+
+        assertEq(rebaseToken.getUserInterestRate(user), 5e10);
+        assertEq(rebaseToken.getUserInterestRate(user2), 5e10);
+    }
+
+    function testCannotSetInterestRate(uint256 newInterestRate) public {
+        vm.prank(user);
+        vm.expectPartialRevert(bytes4(Ownable.OwnableUnauthorizedAccount.selector));
+        rebaseToken.setInterestRate(newInterestRate);
+    }
+
+    function testGetPrincipleAmount(uint256 amount) public {
+        amount = bound(amount, 1e5, type(uint96).max);
+        vm.deal(user, amount);
+        vm.prank(user);
+
+        vault.deposit{value: amount}();
+        assertEq(rebaseToken.principleBalanceOf(user), amount);
+
+        vm.warp(block.timestamp + 1 hours);
+        assertEq(rebaseToken.principleBalanceOf(user), amount);
+    }
+
+    function testInterestRateCanOnlyDecrease(uint256 newInterestRate) public {
+        uint256 initialInterestRate = rebaseToken.getInterestRate();
+        newInterestRate = bound(newInterestRate, initialInterestRate, type(uint96).max);
+
+        vm.prank(owner);
+        vm.expectPartialRevert(bytes4(RebaseToken.RebaseToken_InterestRateIncreaseNotAllowed.selector));
+        rebaseToken.setInterestRate(newInterestRate);
+        assertEq(rebaseToken.getInterestRate(), initialInterestRate);
+    }
 }
