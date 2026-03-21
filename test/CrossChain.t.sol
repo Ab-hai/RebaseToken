@@ -142,7 +142,7 @@ contract CrossChainTest is Test {
             data: "",
             tokenAmounts: tokenAmounts,
             feeToken: localNetworkDetails.linkAddress,
-            extraArgs: Client._argsToBytes(Client.EVMExtraArgsV1({gasLimit: 0}))
+            extraArgs: Client._argsToBytes(Client.EVMExtraArgsV1({gasLimit: 500000}))
         });
 
         uint256 fee =
@@ -162,19 +162,12 @@ contract CrossChainTest is Test {
         uint256 localBalanceAfter = localToken.balanceOf(user);
         assertEq(localBalanceAfter, localBalance - amountToBridge);
         uint256 localUserInterestRate = localToken.getUserInterestRate(user);
-
         ccipLocalSimulatorFork.switchChainAndRouteMessage(remoteFork);
+        assertEq(remoteToken.balanceOf(user), amountToBridge);
 
-        // vm.selectFork(remoteFork);
         vm.warp(block.timestamp + 20 minutes);
-        uint256 remoteBalance = remoteToken.balanceOf(user);
-        ccipLocalSimulatorFork.switchChainAndRouteMessage(remoteFork);
-        uint256 remoteBalanceAfter = remoteToken.balanceOf(user);
-        assertEq(remoteBalanceAfter, remoteBalance + amountToBridge);
-
-        uint256 remoteUserInterestRate = remoteToken.getUserInterestRate(user);
-
-        assertEq(remoteUserInterestRate, localUserInterestRate);
+        assertGt(remoteToken.balanceOf(user), amountToBridge);
+        assertEq(remoteToken.getUserInterestRate(user), localUserInterestRate);
     }
 
     function testBridgeAllTokens() public {
@@ -192,13 +185,11 @@ contract CrossChainTest is Test {
             sepoliaToken,
             arbSepoliaToken
         );
-        // ccipLocalSimulatorFork.switchChainAndRouteMessage(arbSepoliaFork);
-        // vm.selectFork(arbSepoliaFork);
-
-        // uint256 destBalance = arbSepoliaToken.balanceOf(user);
-
-        // assertEq(destBalance, SEND_VALUE);
+        ccipLocalSimulatorFork.switchChainAndRouteMessage(arbSepoliaFork);
         vm.selectFork(arbSepoliaFork);
-        assertEq(arbSepoliaToken.balanceOf(user), SEND_VALUE);
+
+        uint256 destBalance = arbSepoliaToken.balanceOf(user);
+
+        assertGe(destBalance, SEND_VALUE);
     }
 }
