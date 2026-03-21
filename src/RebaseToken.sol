@@ -61,7 +61,6 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         if (_amount == type(uint256).max) {
             _amount = balanceOf(msg.sender);
         }
-
         _mintAccruedInterest(msg.sender);
         _mintAccruedInterest(_recipient);
 
@@ -80,7 +79,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         if (balanceOf(_recipient) == 0) {
             s_userInterestRates[_recipient] = s_userInterestRates[_sender];
         }
-        return super.transfer(_recipient, _amount);
+        return super.transferFrom(_sender, _recipient, _amount);
     }
 
     function _calcUserAccumlatedInterestSinceLastUpdate(address _user) internal view returns (uint256 linearInterest) {
